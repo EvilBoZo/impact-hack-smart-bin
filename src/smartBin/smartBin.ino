@@ -12,7 +12,8 @@ const char* prevImagesUrl = "/docmd?cmd=300";
 const char* nextImagesUrl = "/docmd?cmd=301";
 
 const int sensorThresholdPercent = 80;
-const int sensorMinimalStepPercent = 5;
+const int sensorMinStepPercent = 5;
+const int sensorMaxStepPercent = 20;
 const int binHeightCm = 60;
 
 const int trigPin = 5;
@@ -108,6 +109,9 @@ void loop() {
     static int prevSensorValue = 0;
     static bool isInThreshold = false;
 
+    static int prevSensorSuspectedValue = 0;
+    static bool isFakeChangeSuspected = false;
+
     Serial.print("Loop started...");
 
     if (WiFi.status() == WL_CONNECTED) {
@@ -120,10 +124,23 @@ void loop() {
             return;
         }
 
-        if (abs(currentSensorValue - prevSensorValue) < sensorMinimalStepPercent) {
+        if (abs(currentSensorValue - prevSensorValue) < sensorMinStepPercent) {
             Serial.println(" - No new garbage");
             delay(5000);
             return;
+        }
+
+        if (currentSensorValue - prevSensorValue > sensorMaxStepPercent) {
+            if (!isFakeChangeSuspected) {
+                Serial.println(" - Fake change suspected");
+                prevSensorSuspectedValue = currentSensorValue;
+                isFakeChangeSuspected = true;
+                delay(5000);
+                return;
+            } else {
+                Serial.println(" - Suspected fake changes approved");
+                isFakeChangeSuspected = false;
+            }
         }
 
         if (currentSensorValue >= sensorThresholdPercent && !isInThreshold) {
