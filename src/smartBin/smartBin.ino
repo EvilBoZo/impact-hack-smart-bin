@@ -11,7 +11,17 @@ const char* getImagesUrl = "/docmd?cmd=104";
 const char* prevImagesUrl = "/docmd?cmd=300";
 const char* nextImagesUrl = "/docmd?cmd=301";
 
-const int sensorThreshold = 80;
+const int sensorThresholdPercent = 80;
+const int binHeightCm = 150;
+
+const int trigPin = 5;
+const int echoPin = 18;
+
+//define sound speed in cm/uS
+#define SOUND_SPEED 0.034
+#define CM_TO_INCH 0.393701
+
+
 
 void httpGETRequest(const char* requestUrl) {
     HTTPClient http;
@@ -51,18 +61,49 @@ int getNextValue() {
     return result;
 }
 
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
+// Функция опроса ультразвукового датчика
+int getBinFillLevelPercent() {
+    long duration;
+    float distanceCm;
+  
+    // Генерируем ультразвуковой импульс
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+  
+    // Считываем время возврата сигнала
+    duration = pulseIn(echoPin, HIGH);
+  
+    // Вычисляем расстояние
+    distanceCm = duration * SOUND_SPEED / 2;
+  
+    // Преобразуем расстояние в процент заполнения
+    int percent = 100 - (int)((distanceCm / binHeightCm) * 100);
+  
+    // Ограничиваем диапазон от 0 до 100
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+  
+    return percent;
+}
 
-  // Подключение к Wi-Fi
-  Serial.print("Connecting to WiFi...");
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println(" connected!");
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+
+    // Подключение к Wi-Fi
+    Serial.print("Connecting to WiFi...");
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println(" connected!");
+
+    pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
+    pinMode(echoPin, INPUT); // Sets the echoPin as an Input
 }
 
 void loop() {
@@ -72,29 +113,30 @@ void loop() {
     Serial.print("Loop started...");
 
     if (WiFi.status() == WL_CONNECTED) {
-        int currentSensorValue = getNextValue();
+        int currentSensorValue = getBinFillLevelPercent();
         Serial.print("Current sensor value: " + String(currentSensorValue));
 
-        if (currentSensorValue > prevSensorValue) {
-            Serial.print("Show video");
-            httpGETRequest(getVideoUrl);
-            delay(5000);
-            httpGETRequest(getImagesUrl);
-        }
-
-        if (currentSensorValue >= sensorThreshold && !isInThreshold) {
-            Serial.print("Show next image");
+        if (currentSensorValue >= sensorThresholdPercent && !isInThreshold) {
+            Serial.println("- Show next image");
             httpGETRequest(nextImagesUrl);
             isInThreshold = true;
         }
 
-        if (currentSensorValue < sensorThreshold && isInThreshold) {
-            Serial.print("Show prev image");
+        if (currentSensorValue < sensorThresholdPercent && isInThreshold) {
+            Serial.println("- Show prev image");
             httpGETRequest(prevImagesUrl);
             isInThreshold = false;
         }
+
+        if (currentSensorValue > prevSensorValue) {
+            Serial.println("- Show video");
+            httpGETRequest(getVideoUrl);
+            delay(5000);
+            httpGETRequest(getImagesUrl);
+            delay(500);
+        }
     
-        Serial.print("Wait for new loop...");
+        Serial.println("Wait for new loop");
         delay(5000);
     } else {
         Serial.println("WiFi not connected!");
