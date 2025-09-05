@@ -12,7 +12,8 @@ const char* prevImagesUrl = "/docmd?cmd=300";
 const char* nextImagesUrl = "/docmd?cmd=301";
 
 const int sensorThresholdPercent = 80;
-const int binHeightCm = 150;
+const int sensorMinimalStepPercent = 5;
+const int binHeightCm = 60;
 
 const int trigPin = 5;
 const int echoPin = 18;
@@ -78,13 +79,10 @@ int getBinFillLevelPercent() {
   
     // Вычисляем расстояние
     distanceCm = duration * SOUND_SPEED / 2;
+    Serial.println("Sensor value in cm: " + String(distanceCm));
   
     // Преобразуем расстояние в процент заполнения
     int percent = 100 - (int)((distanceCm / binHeightCm) * 100);
-  
-    // Ограничиваем диапазон от 0 до 100
-    if (percent < 0) percent = 0;
-    if (percent > 100) percent = 100;
   
     return percent;
 }
@@ -116,26 +114,40 @@ void loop() {
         int currentSensorValue = getBinFillLevelPercent();
         Serial.print("Current sensor value: " + String(currentSensorValue));
 
+        if (currentSensorValue > 100 || currentSensorValue < 0) {
+            Serial.println(" - Sensor error");
+            delay(5000);
+            return;
+        }
+
+        if (abs(currentSensorValue - prevSensorValue) < sensorMinimalStepPercent) {
+            Serial.println(" - No new garbage");
+            delay(5000);
+            return;
+        }
+
         if (currentSensorValue >= sensorThresholdPercent && !isInThreshold) {
-            Serial.println("- Show next image");
+            Serial.println(" - Show next image");
             httpGETRequest(nextImagesUrl);
             isInThreshold = true;
+            delay(1000);
         }
 
         if (currentSensorValue < sensorThresholdPercent && isInThreshold) {
-            Serial.println("- Show prev image");
+            Serial.println(" - Show prev image");
             httpGETRequest(prevImagesUrl);
             isInThreshold = false;
+            delay(1000);
         }
 
         if (currentSensorValue > prevSensorValue) {
-            Serial.println("- Show video");
+            Serial.println(" - Show video");
             httpGETRequest(getVideoUrl);
             delay(5000);
             httpGETRequest(getImagesUrl);
-            delay(500);
         }
     
+        prevSensorValue = currentSensorValue;
         Serial.println("Wait for new loop");
         delay(5000);
     } else {
